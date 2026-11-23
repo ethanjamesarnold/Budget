@@ -89,13 +89,22 @@ main { flex: 1; padding: 2px 14px 28px; }
 }
 
 /* type selector: colour matches the strip each type produces */
-.seg { display: flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--tile); }
-.seg button { padding: 8px 13px; font-size: 15px; font-weight: 500; color: var(--muted); }
+.seg {
+  display: flex; flex: 1 1 auto; min-width: 0; max-width: 360px; margin-right: auto;
+  border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--tile);
+}
+.seg button {
+  flex: 1 1 0; min-width: 0; padding: 8px 4px; text-align: center; white-space: nowrap;
+  font-size: 15px; font-stretch: 88%; font-weight: 500; color: var(--muted);
+}
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button[aria-pressed="true"] { color: var(--ink); font-weight: 700; }
-.seg .k-expense[aria-pressed="true"]  { background: var(--buff); box-shadow: inset 0 -3px var(--buff-edge); }
+/* each type takes the colour of the strip it produces; a refund is a (negative) expense strip */
+.seg .k-expense[aria-pressed="true"],
+.seg .k-refund[aria-pressed="true"]   { background: var(--buff); box-shadow: inset 0 -3px var(--buff-edge); }
 .seg .k-income[aria-pressed="true"]   { background: var(--blue); box-shadow: inset 0 -3px var(--blue-edge); }
 .seg .k-transfer[aria-pressed="true"] { background: var(--lav);  box-shadow: inset 0 -3px var(--lav-edge); }
+@media (max-width: 380px) { .seg button { font-size: 14px; font-stretch: 80%; } }
 
 .iconbtn { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; color: var(--muted); }
 .back { display: flex; align-items: center; gap: 2px; font-size: 20px; font-weight: 700; margin-left: -6px; padding: 4px 6px 4px 0; }
@@ -122,13 +131,17 @@ main { flex: 1; padding: 2px 14px 28px; }
   border-radius: 17px; border: 1px solid var(--line); background: var(--tile); font-size: 14px; font-weight: 500; white-space: nowrap;
 }
 .chip.on, .chip[aria-pressed="true"] { background: var(--ink); color: var(--bay); border-color: var(--ink); }
-.keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+/* 1 2 3 ⌫ / 4 5 6 ⌫ / 7 8 9 Clear / 0 0 . Clear */
+.keypad { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 46px; gap: 6px; }
 .keypad button {
-  height: 50px; border-radius: var(--r); background: var(--tile); border: 1px solid var(--line);
+  border-radius: var(--r); background: var(--tile); border: 1px solid var(--line);
   text-align: center; font-size: 26px; font-weight: 500; font-stretch: 85%;
   display: grid; place-items: center; user-select: none; -webkit-user-select: none;
 }
 .keypad button:active { background: var(--line); }
+.keypad .k-back  { grid-column: 4; grid-row: 1 / span 2; }
+.keypad .k-clear { grid-column: 4; grid-row: 3 / span 2; font-size: 17px; font-weight: 600; font-stretch: 90%; }
+.keypad .k-zero  { grid-column: 1 / span 2; }
 .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 12px; }
 .grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 12px; }
 .tile {
@@ -154,8 +167,6 @@ main { flex: 1; padding: 2px 14px 28px; }
 .billsel b { font-weight: 600; margin-right: 6px; }
 .billsel .mini { min-width: 36px; height: 34px; border-radius: 6px; display: grid; place-items: center; font-weight: 600; font-size: 14px; color: var(--ink); }
 .meta { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
-.datepick { position: relative; overflow: hidden; }
-.datepick input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; border: 0; padding: 0; }
 .note {
   flex: 1; min-width: 0; height: 34px; border-radius: 17px; border: 1px solid var(--line); background: var(--tile);
   padding: 0 12px; font-size: 14px;
@@ -320,7 +331,7 @@ summary span { margin-left: auto; margin-right: 14px; font-weight: 500; color: v
 <script>
 (() => {
 'use strict';
-const VERSION = '1.0';
+const VERSION = '1.1';
 
 /* ================= constants ================= */
 const ACCOUNTS = [
@@ -349,7 +360,6 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const pad = n => String(n).padStart(2, '0');
 const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const todayStr = () => ymd(new Date());
-const yesterdayStr = () => { const d = new Date(); d.setDate(d.getDate() - 1); return ymd(d); };
 const isDate = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
 const isMonth = s => /^\d{4}-\d{2}$/.test(String(s || ''));
 const monthOf = s => String(s).slice(0, 7);
@@ -539,7 +549,7 @@ function balances() {
 }
 
 const billMonth = t => isMonth(t.forMonth) ? t.forMonth : monthOf(t.date);
-const billPayments = (billId, mk) => db.tx.filter(t => t.type === 'expense' && t.billId === billId && billMonth(t) === mk);
+const billPayments = (billId, mk) => db.tx.filter(t => t.type === 'expense' && num(t.amount) > 0 && t.billId === billId && billMonth(t) === mk);
 const billCounts = (b, mk) => (!isMonth(b.start) || b.start <= mk) && (b.freq !== 'yearly' || num(b.month) === +mk.slice(5, 7));
 const dueDate = (b, mk) => num(b.dueDay) >= 1 ? `${mk}-${pad(Math.min(num(b.dueDay), daysIn(mk)))}` : '';
 
@@ -624,7 +634,7 @@ function autoForMonth(b, dateStr) {
 /* ================= the draft entry ================= */
 function newDraft(type) {
   type = type || 'expense';
-  const d = { type, amount: '', prefilled: '', refund: false, category: '', billId: '', forMonth: '', dateMode: 'today', date: '', note: '', picking: false };
+  const d = { type, amount: '', prefilled: '', category: '', billId: '', forMonth: '', note: '', picking: false };
   if (type === 'income') { d.category = 'Paycheque'; d.amount = amtStr(cfg().payAmount); }
   return d;
 }
@@ -633,7 +643,7 @@ function clearBill() {
   if (draft.billId && draft.prefilled && draft.amount === draft.prefilled) draft.amount = '';
   draft.billId = ''; draft.forMonth = ''; draft.prefilled = '';
 }
-const draftDate = () => draft.dateMode === 'yesterday' ? yesterdayStr() : (draft.dateMode === 'custom' && isDate(draft.date) ? draft.date : todayStr());
+const draftDate = () => todayStr();   // new entries are always today; fix a date later by tapping the entry
 function primaryAccount() {
   const b = draft.billId && db.bills.find(x => x.id === draft.billId);
   return b && ACCOUNTS.some(a => a.id === b.account) ? b.account : cfg().defaultAccount;
@@ -665,7 +675,7 @@ function paintBar() {
   const v = currentView();
   let left;
   if (v === 'log') {
-    left = `<div class="seg" role="group" aria-label="Entry type">${['expense', 'income', 'transfer'].map(t =>
+    left = `<div class="seg" role="group" aria-label="Entry type">${['expense', 'income', 'transfer', 'refund'].map(t =>
       `<button class="k-${t}" aria-pressed="${draft.type === t}" data-act="type:${t}">${cap(t)}</button>`).join('')}</div>`;
   } else if (v === 'settings') {
     left = `<button class="back" data-act="close-settings" aria-label="Back">${chev(-1)}<span>Settings</span></button>`;
@@ -674,7 +684,7 @@ function paintBar() {
   else left = '<span class="brand">Budget</span>';
   const onboarding = v === 'connect' || v === 'start';
   const right = onboarding ? '' : syncPill(v === 'log') + (v === 'settings' ? '' : `<button class="iconbtn" data-act="settings" aria-label="Settings">${GEAR}</button>`);
-  $('#bar').innerHTML = `${left}<span class="grow"></span>${right}`;
+  $('#bar').innerHTML = `${left}${v === 'log' ? '' : '<span class="grow"></span>'}${right}`;
 }
 
 // compact: the Log screen shares its top bar with the type switch, so it only shows a count there.
@@ -772,15 +782,17 @@ function viewLog() {
   const shown = empty ? '0' : d.amount;
   let pick = '', save = '';
 
-  if (d.type === 'expense') {
+  if (d.type === 'expense' || d.type === 'refund') {
+    const refund = d.type === 'refund';
     pick = d.picking ? billPicker() : catGrid() + billLine();
     const ready = amt > 0 && d.category && !d.picking;
     const primary = primaryAccount();
-    const hint = !(amt > 0) ? 'Enter an amount' : !d.category ? 'Pick a category' : d.picking ? 'Pick which one, or log it without one' : 'Save to';
+    const verb = refund ? 'Refund to' : 'Save to';
+    const hint = !(amt > 0) ? 'Enter an amount' : !d.category ? 'Pick a category' : d.picking ? 'Pick which one, or log it without one' : verb;
     save = `<div class="saveto ${ready ? '' : 'not-ready'}">
       <span class="lbl" id="save-hint">${hint}</span>
       <div class="accts" role="group" aria-labelledby="save-hint">${ACCOUNTS.map(a =>
-        `<button class="acct ${a.id === primary ? 'primary' : ''}" data-act="save:${a.id}" aria-label="Save to ${a.name}">${a.short}</button>`).join('')}</div>
+        `<button class="acct ${a.id === primary ? 'primary' : ''}" data-act="save:${a.id}" aria-label="${verb} ${a.name}">${a.short}</button>`).join('')}</div>
     </div>`;
   } else if (d.type === 'income') {
     pick = `<div class="grid2">${INCOME_CATS.map(c => `<button class="tile" aria-pressed="${d.category === c}" data-act="inc:${c}">${c}${c === 'Paycheque' ? `<small class="num">usually ${moneyAbs(s.payAmount)}</small>` : '<small>goes into chequing</small>'}</button>`).join('')}</div>`;
@@ -800,12 +812,8 @@ function viewLog() {
     </div>`;
   }
 
-  const custom = d.dateMode === 'custom' && isDate(d.date);
   const meta = `<div class="meta">
-    <button class="chip" aria-pressed="${d.dateMode === 'today'}" data-act="date:today">Today</button>
-    <button class="chip" aria-pressed="${d.dateMode === 'yesterday'}" data-act="date:yesterday">Yesterday</button>
-    <label class="chip datepick ${custom ? 'on' : ''}"><span>${custom ? fmtDay(d.date) : 'Other day'}</span><input type="date" data-in="date" max="${todayStr()}" value="${custom ? d.date : ''}" aria-label="Pick a date"></label>
-    <input class="note" data-in="note" placeholder="Note" value="${esc(d.note)}" maxlength="80" enterkeyhint="done" aria-label="Note">
+    <input class="note" data-in="note" placeholder="Note (optional)" value="${esc(d.note)}" maxlength="80" enterkeyhint="done" aria-label="Note">
   </div>`;
 
   const recent = db.tx.filter(t => t.type !== 'adjust')
@@ -815,12 +823,12 @@ function viewLog() {
   return `
   <section class="log" aria-label="Log an entry">
     <div class="amount-row">
-      <div class="amount ${empty ? 'is-empty' : ''} ${d.refund && d.type === 'expense' ? 'is-refund' : ''}" aria-live="polite">${d.refund && d.type === 'expense' ? '−' : ''}<span class="cur">$</span>${esc(shown)}</div>
-      ${d.type === 'expense' ? `<button class="chip" aria-pressed="${d.refund}" data-act="refund">Refund</button>` : ''}
+      <div class="amount ${empty ? 'is-empty' : ''} ${d.type === 'refund' ? 'is-refund' : ''}" aria-live="polite">${d.type === 'refund' ? '−' : ''}<span class="cur">$</span>${esc(shown)}</div>
     </div>
-    <div class="keypad">${['1', '2', '3', 'back', '4', '5', '6', '.', '7', '8', '9', '0'].map(k =>
-      k === 'back' ? `<button data-act="key:back" data-hold="clear" aria-label="Delete. Hold to clear">${BACKSPACE}</button>`
-        : `<button data-act="key:${k}" aria-label="${k === '.' ? 'Decimal point' : k}">${k}</button>`).join('')}</div>
+    <div class="keypad">${['1', '2', '3', 'back', '4', '5', '6', '7', '8', '9', 'clear', '0', '.'].map(k =>
+      k === 'back' ? `<button class="k-back" data-act="key:back" aria-label="Delete last digit">${BACKSPACE}</button>`
+        : k === 'clear' ? '<button class="k-clear" data-act="key:clear" aria-label="Clear the amount">Clear</button>'
+        : `<button class="${k === '0' ? 'k-zero' : ''}" data-act="key:${k}" aria-label="${k === '.' ? 'Decimal point' : k}">${k}</button>`).join('')}</div>
     ${pick}
     ${meta}
     ${save}
@@ -888,7 +896,7 @@ function viewOverview() {
       <div class="lrow"><span>Chequing (estimated)</span><span class="num">${money(b.chequing)}</span></div>
       <div class="lrow"><span>Cards owing</span><span class="num">${less(b.owingTotal)}</span></div>
       <div class="lrow"><span>Bills and subscriptions left</span><span class="num">${less(m.unpaid)}</span></div>
-      <div class="lrow"><span>Pay still coming</span><span class="num">${more(m.payComing)}</span></div>
+      <div class="lrow"><span>Remaining anticipated income</span><span class="num">${more(m.payComing)}</span></div>
       <div class="lrow total"><span>Balance</span><span class="num ${b.chequing - b.owingTotal - m.unpaid + m.payComing < 0 ? 'neg' : ''}">${money(b.chequing - b.owingTotal - m.unpaid + m.payComing)}</span></div>
     </div>`;
   } else {
@@ -1330,13 +1338,13 @@ function saveExpense(accountId, other) {
   if (draft.picking) return nudge($('.picker'), 'Pick which one, or log it without one');
   if (accountId === 'other' && other === undefined) return otherAccountSheet();
   const tx = {
-    id: uid('t'), date: draftDate(), type: 'expense', amount: draft.refund ? -amt : amt,
+    id: uid('t'), date: draftDate(), type: 'expense', amount: draft.type === 'refund' ? -amt : amt,
     category: draft.category, account: accountId, other: accountId === 'other' ? (other || '') : '',
     billId: draft.billId || '', forMonth: draft.billId ? draft.forMonth : '', note: draft.note.trim(),
     created: new Date().toISOString(),
   };
   const where = accountId === 'other' ? (other || 'Other') : acct(accountId).name;
-  finishSave(tx, `${draft.refund ? 'Refund of' : 'Saved'} ${moneyAbs(amt)} ${draft.refund ? 'on' : 'to'} ${where}`);
+  finishSave(tx, draft.type === 'refund' ? `Refund of ${moneyAbs(amt)} back to ${where}` : `Saved ${moneyAbs(amt)} to ${where}`);
 }
 
 function saveIncome() {
@@ -1378,18 +1386,18 @@ const actions = {
   'tab': v => { ui.view = v; if (v === 'overview') ui.month = ''; render(); window.scrollTo(0, 0); },
   'type': t => {
     if (draft.type === t) return;
-    const keep = { amount: draft.amount, note: draft.note, dateMode: draft.dateMode, date: draft.date };
+    clearBill();
+    const keep = { amount: draft.amount, note: draft.note };
     draft = newDraft(t);
     if (parseAmt(keep.amount) > 0) draft.amount = keep.amount;   // never throw away a typed amount
-    Object.assign(draft, { note: keep.note, dateMode: keep.dateMode, date: keep.date });
+    draft.note = keep.note;
     render();
   },
   'key': k => pressKey(k),
-  'refund': () => { draft.refund = !draft.refund; render(); },
   'cat': c => {
     clearBill();
     draft.category = c;
-    draft.picking = c in BILL_KIND;
+    draft.picking = draft.type === 'expense' && c in BILL_KIND;
     render();
   },
   'bill': arg => {
@@ -1412,7 +1420,6 @@ const actions = {
     if (c === 'Paycheque' && !(parseAmt(draft.amount) > 0)) draft.amount = amtStr(cfg().payAmount);
     render();
   },
-  'date': mode => { draft.dateMode = mode; draft.date = ''; render(); },
   'save': id => saveExpense(id),
   'save-income': () => saveIncome(),
   'transfer': card => saveTransfer(card),
@@ -1511,20 +1518,10 @@ const actions = {
 };
 
 /* ================= events ================= */
-let holdTimer = 0, held = false;
-document.addEventListener('pointerdown', e => {
-  const b = e.target.closest('[data-hold="clear"]');
-  if (!b) return;
-  held = false;
-  holdTimer = setTimeout(() => { held = true; pressKey('clear'); if (navigator.vibrate) { try { navigator.vibrate(20); } catch (_) {} } }, 450);
-});
-['pointerup', 'pointercancel', 'pointerleave'].forEach(t => document.addEventListener(t, () => clearTimeout(holdTimer)));
-
 document.addEventListener('click', e => {
   if (e.target.closest('#scrim')) { closeSheet(); return; }
   const btn = e.target.closest('[data-act]');
   if (!btn || btn.disabled) return;
-  if (held && btn.dataset.hold) { held = false; return; }
   const raw = btn.dataset.act;
   const i = raw.indexOf(':');
   const name = i < 0 ? raw : raw.slice(0, i);
@@ -1537,11 +1534,7 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
-  if (t.dataset.in === 'date') {
-    if (isDate(t.value)) { draft.dateMode = 'custom'; draft.date = t.value; }
-    t.blur();
-    render();
-  } else if (t.dataset.in === 'defaultAccount') {
+  if (t.dataset.in === 'defaultAccount') {
     t.blur();
     commit('settings.put', { defaultAccount: t.value });
     toast(`New entries default to ${acct(t.value).name}`);
